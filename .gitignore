@@ -170,8 +170,11 @@ go.work.sum
 # env file
 .env
 
-# Server binaries
+# Server binaries (legacy Go builds)
 binaries/
+
+# Server build output
+server/dist/
 
 # Editor/IDE
 .idea/

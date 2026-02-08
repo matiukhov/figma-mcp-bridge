@@ -27,50 +27,46 @@ Figma MCP Bridge is a solution to this problem. It is a plugin + MCP server that
 
 ## Quick Start
 
-The easier way to get started is to download the latest release from [Releases](https://github.com/figma-mcp-bridge/releases) page.
+### 1. Add the MCP server to your favourite AI tool
 
-Unzip it in a location and then:
+Add the following to your AI tool's MCP configuration (e.g. Cursor, Windsurf, Claude Desktop):
 
-### 1. Add a development plugin to Figma
-
-Open Figma, and then go to `Plugins > Development > Install from manifest` and drop in the `plugin/manifest.json` file from inside the folder you downloaded.
-
-### 2. Add the MCP server to your favourite AI tool
-
-An example configuration in Cursor:
 ```json
-"figma-bridge": {
-      "command": "node",
-      "args": ["/path/to/figma-mcp-bridge/run.js"]
+{
+  "figma-bridge": {
+    "command": "npx",
+    "args": ["-y", "@gethopp/figma-mcp-bridge"]
+  }
 }
 ```
 
-The `run.js` script automatically detects your OS and architecture, and runs the correct binary from the `binaries/` folder — no need to pick the right binary yourself.
+That's it — no binaries to download or install.
 
-### 3. Start using the MCP server 🎉
+### 2. Add the Figma plugin
 
-To work there is a bit of magic behind the scenes.
+Download the plugin from the [latest release](https://github.com/gethopp/figma-mcp-bridge/releases) page, then in Figma go to `Plugins > Development > Import plugin from manifest` and select the `manifest.json` file from the `plugin/` folder.
 
-If you want to know more about how it works, you can read the [How it works](#how-it-works) section.
+### 3. Start using it 🎉
+
+Open a Figma file, run the plugin, and start prompting your AI tool. The MCP server will automatically connect to the plugin.
+
+If you want to know more about how it works, read the [How it works](#how-it-works) section.
 
 ## Local development
 
-To start you will need two things:
 #### 1. Clone this repository locally
 
-```
+```bash
 git clone git@github.com:gethopp/figma-mcp-bridge.git
 ```
 
 #### 2. Build the server
 
 ```bash
-cd server && mkdir -p ../binaries && go build -o ../binaries/figma-map-$(go env GOOS)-$(go env GOARCH) .
+cd server && npm install && npm run build
 ```
 
 #### 3. Build the plugin
-
-Build the plugin, and it will then be available in the `dist` folder.
 
 ```bash
 cd plugin && bun install && bun run build
@@ -78,12 +74,14 @@ cd plugin && bun install && bun run build
 
 #### 4. Add the MCP server to your favourite AI tool
 
-Add the following to your favourite AI tool's MCP config:
+For local development, add the following to your AI tool's MCP config:
 
 ```json
-"figma-bridge": {
-      "command": "node",
-      "args": ["/path/to/figma-mcp-bridge/run.js"]
+{
+  "figma-bridge": {
+    "command": "node",
+    "args": ["/path/to/figma-mcp-bridge/server/dist/index.js"]
+  }
 }
 ```
 
@@ -92,7 +90,16 @@ Add the following to your favourite AI tool's MCP config:
 ```
 Figma-MCP-Bridge/
 ├── plugin/   # Figma plugin (TypeScript/React)
-└── server/   # Go MCP server
+└── server/   # MCP server (TypeScript/Node.js)
+    └── src/
+        ├── index.ts      # Entry point
+        ├── bridge.ts     # WebSocket bridge to Figma plugin
+        ├── leader.ts     # Leader: HTTP server + bridge
+        ├── follower.ts   # Follower: proxies to leader via HTTP
+        ├── node.ts       # Dynamic leader/follower role switching
+        ├── election.ts   # Leader election & health monitoring
+        ├── tools.ts      # MCP tool definitions
+        └── types.ts      # Shared types
 ```
 
 ## How it works
@@ -109,7 +116,7 @@ The MCP server is the core of the Figma MCP Bridge. As the Figma plugin connects
 - Handling WebSocket connections from the Figma plugin
 - Forwarding tool calls to the Figma plugin
 - Routing responses back to the Figma plugin
-- Handling leader election (as we can have only WS connection to an MCP server at a time)
+- Handling leader election (as we can have only one WS connection to an MCP server at a time)
 
 
 ```
@@ -157,4 +164,3 @@ The MCP server is the core of the Figma MCP Bridge. As the Figma plugin connects
          │      (e.g., Cursor)         │    │      (e.g., Cursor)         │
          └─────────────────────────────┘    └─────────────────────────────┘
 ```
-

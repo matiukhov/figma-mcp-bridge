@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write # Required for npm provenance (trusted publishing)
 
 jobs:
   release:
@@ -25,25 +26,50 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          go-version: "1.23"
+          node-version-file: ".nvmrc"
+          registry-url: "https://registry.npmjs.org"
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
-      - name: Build Go server binaries
+      # ── Server: install, build, publish ──────────────────────────────
+
+      - name: Install server dependencies
+        working-directory: server
+        run: bun install --frozen-lockfile
+
+      - name: Transpile server (tsc)
+        working-directory: server
+        run: bun run build
+
+      - name: Verify CLI entry point
         working-directory: server
         run: |
-          mkdir -p ../binaries
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o ../binaries/figma-map-linux-amd64 .
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o ../binaries/figma-map-linux-arm64 .
-          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o ../binaries/figma-map-darwin-amd64 .
-          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o ../binaries/figma-map-darwin-arm64 .
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o ../binaries/figma-map-windows-amd64.exe .
+          # Ensure the shebang is present for npx compatibility
+          head -1 dist/index.js | grep -q '#!/usr/bin/env node' \
+            || { echo "ERROR: dist/index.js is missing the node shebang"; exit 1; }
+          echo "✓ Shebang present in dist/index.js"
+
+      - name: Bundle README for npm
+        run: cp README.md server/README.md
+
+      - name: Set package version
+        working-directory: server
+        run: npm version ${{ inputs.version }} --no-git-tag-version
+
+      - name: Publish to npm (with provenance)
+        working-directory: server
+        run: npm publish --access public
+        # run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # ── Figma plugin: install, build ─────────────────────────────────
 
       - name: Install plugin dependencies
         working-directory: plugin
@@ -53,21 +79,11 @@ jobs:
         working-directory: plugin
         run: bun run build
 
+      # ── Package GitHub release ───────────────────────────────────────
+
       - name: Package release
         run: |
-          # Create release directory
-          mkdir -p release/binaries
           mkdir -p release/plugin
-
-          # Copy server binaries
-          cp binaries/figma-map-linux-amd64 release/binaries/
-          cp binaries/figma-map-linux-arm64 release/binaries/
-          cp binaries/figma-map-darwin-amd64 release/binaries/
-          cp binaries/figma-map-darwin-arm64 release/binaries/
-          cp binaries/figma-map-windows-amd64.exe release/binaries/
-
-          # Copy launcher script
-          cp run.js release/
 
           # Copy built Figma plugin
           cp -r plugin/dist release/plugin/
