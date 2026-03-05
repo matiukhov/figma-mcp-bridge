@@ -4,6 +4,7 @@ import { z } from "zod";
 export const figmaNodeId = z
   .string()
   .regex(/^\d+:\d+$/, "Node ID must use colon format, e.g. '4029:12345'");
+const exportFormat = z.enum(["PNG", "SVG", "JPG", "PDF"]);
 
 export const toolInputSchemas = {
   get_node: z.object({
@@ -24,14 +25,44 @@ export const toolInputSchemas = {
       .describe(
         "Optional list of node IDs to export (colon-separated format, e.g. '4029:12345' — never use hyphens). If empty, exports the current selection",
       ),
-    format: z
-      .string()
+    format: exportFormat
       .optional()
       .describe("Export format: PNG (default) or SVG or JPG or PDF"),
     scale: z
       .number()
       .optional()
       .describe("Export scale for raster formats (default 2)"),
+  }),
+
+  save_screenshots: z.object({
+    items: z
+      .array(
+        z.object({
+          nodeId: figmaNodeId.describe("The node ID to export"),
+          outputPath: z
+            .string()
+            .min(1)
+            .describe(
+              "Output file path (relative paths resolve from the MCP server current working directory)",
+            ),
+          format: exportFormat
+            .optional()
+            .describe("Per-item export format override: PNG, SVG, JPG, or PDF"),
+          scale: z
+            .number()
+            .optional()
+            .describe("Per-item export scale override for raster formats"),
+        }),
+      )
+      .min(1)
+      .describe("List of screenshot save operations to execute in batch"),
+    format: exportFormat
+      .optional()
+      .describe("Default export format: PNG (default) or SVG or JPG or PDF"),
+    scale: z
+      .number()
+      .optional()
+      .describe("Default export scale for raster formats (default 2)"),
   }),
 } as const;
 
@@ -49,6 +80,7 @@ const rpcToArgs: Record<
   get_node: (nodeIds) => ({ nodeId: nodeIds?.[0] }),
   get_design_context: (_nodeIds, params) => ({ ...params }),
   get_screenshot: (nodeIds, params) => ({ nodeIds, ...params }),
+  save_screenshots: (_nodeIds, params) => ({ ...params }),
 };
 
 /**

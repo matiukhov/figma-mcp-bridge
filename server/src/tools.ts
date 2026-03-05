@@ -1,4 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 import type { Node } from "./node.js";
 import { toolInputSchemas } from "./schema.js";
 import type { BridgeResponse } from "./types.js";
@@ -7,6 +9,37 @@ type ToolResult = {
   content: Array<{ type: "text"; text: string }>;
   isError?: boolean;
 };
+
+type ExportFormat = "PNG" | "SVG" | "JPG" | "PDF";
+
+interface ScreenshotExport {
+  nodeId: string;
+  nodeName: string;
+  format: ExportFormat;
+  base64: string;
+  width: number;
+  height: number;
+}
+
+interface SaveScreenshotItemInput {
+  nodeId: string;
+  outputPath: string;
+  format?: ExportFormat;
+  scale?: number;
+}
+
+interface SaveScreenshotItemResult {
+  index: number;
+  nodeId: string;
+  nodeName?: string;
+  outputPath: string;
+  format?: ExportFormat;
+  width?: number;
+  height?: number;
+  bytesWritten?: number;
+  success: boolean;
+  error?: string;
+}
 
 export function registerTools(server: McpServer, node: Node): void {
   server.tool(
@@ -86,6 +119,57 @@ export function registerTools(server: McpServer, node: Node): void {
       );
     },
   );
+
+  server.tool(
+    "save_screenshots",
+    "Export screenshots for multiple nodes and save them directly to the local filesystem. Returns metadata only (no base64).",
+    toolInputSchemas.save_screenshots.shape,
+    async ({ items, format, scale }): Promise<ToolResult> => {
+      try {
+        const results: SaveScreenshotItemResult[] = [];
+
+        for (const [index, item] of items.entries()) {
+          const result = await saveScreenshotItemToFile(
+            node,
+            item,
+            index,
+            process.cwd(),
+            format,
+            scale,
+          );
+          results.push(result);
+        }
+
+        const succeeded = results.filter((result) => result.success).length;
+        const failed = results.length - succeeded;
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                total: results.length,
+                succeeded,
+                failed,
+                hasErrors: failed > 0,
+                results,
+              }),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: err instanceof Error ? err.message : String(err),
+            },
+          ],
+          isError: true,
+        };
+      }
+    },
+  );
 }
 
 async function renderResponse(
@@ -113,4 +197,166 @@ async function renderResponse(
       isError: true,
     };
   }
+}
+
+function resolveAndValidateOutputPath(
+  outputPath: string,
+  workspaceRoot: string,
+): string {
+  const resolvedRoot = path.resolve(workspaceRoot);
+  const resolvedPath = path.resolve(resolvedRoot, outputPath);
+  const relativePath = path.relative(resolvedRoot, resolvedPath);
+  const escapesRoot =
+    relativePath.startsWith("..") || path.isAbsolute(relativePath);
+  if (escapesRoot) {
+    throw new Error(
+      `outputPath must be inside the MCP server working directory: ${resolvedRoot}`,
+    );
+  }
+  return resolvedPath;
+}
+
+function inferFormatFromPath(outputPath: string): ExportFormat | null {
+  const ext = path.extname(outputPath).toLowerCase();
+  switch (ext) {
+    case ".png":
+      return "PNG";
+    case ".svg":
+      return "SVG";
+    case ".jpg":
+    case ".jpeg":
+      return "JPG";
+    case ".pdf":
+      return "PDF";
+    default:
+      return null;
+  }
+}
+
+function resolveExportFormat(
+  format: ExportFormat | undefined,
+  inferredFormat: ExportFormat | null,
+): ExportFormat {
+  if (format && inferredFormat && format !== inferredFormat) {
+    throw new Error(
+      `format ${format} conflicts with outputPath extension (${inferredFormat})`,
+    );
+  }
+  return format ?? inferredFormat ?? "PNG";
+}
+
+function getSingleScreenshotExport(data: unknown): ScreenshotExport {
+  if (!data || typeof data !== "object") {
+    throw new Error("Invalid screenshot response from plugin");
+  }
+
+  const exports = (data as { exports?: unknown }).exports;
+  if (!Array.isArray(exports) || exports.length === 0) {
+    throw new Error("No screenshot export returned by plugin");
+  }
+
+  const first = exports[0];
+  if (
+    !first ||
+    typeof first !== "object" ||
+    typeof (first as { nodeId?: unknown }).nodeId !== "string" ||
+    typeof (first as { nodeName?: unknown }).nodeName !== "string" ||
+    typeof (first as { base64?: unknown }).base64 !== "string" ||
+    typeof (first as { width?: unknown }).width !== "number" ||
+    typeof (first as { height?: unknown }).height !== "number"
+  ) {
+    throw new Error("Malformed screenshot export payload");
+  }
+
+  const screenshot = first as ScreenshotExport;
+  return screenshot;
+}
+
+async function saveScreenshotItemToFile(
+  node: Node,
+  item: SaveScreenshotItemInput,
+  index: number,
+  workspaceRoot: string,
+  defaultFormat?: ExportFormat,
+  defaultScale?: number,
+): Promise<SaveScreenshotItemResult> {
+  let resolvedOutputPath = item.outputPath;
+
+  try {
+    resolvedOutputPath = resolveAndValidateOutputPath(item.outputPath, workspaceRoot);
+    const inferredFormat = inferFormatFromPath(resolvedOutputPath);
+    const resolvedFormat = resolveExportFormat(
+      item.format ?? defaultFormat,
+      inferredFormat,
+    );
+    const resolvedScale = resolveScale(item.scale, defaultScale);
+
+    const params: Record<string, unknown> = { format: resolvedFormat };
+    if (resolvedScale !== undefined) {
+      params.scale = resolvedScale;
+    }
+
+    const resp = await node.sendWithParams("get_screenshot", [item.nodeId], params);
+    if (resp.error) {
+      throw new Error(resp.error);
+    }
+
+    const screenshotExport = getSingleScreenshotExport(resp.data);
+    const bytesWritten = await writeBase64ToFile(
+      screenshotExport.base64,
+      resolvedOutputPath,
+    );
+
+    return {
+      index,
+      nodeId: screenshotExport.nodeId,
+      nodeName: screenshotExport.nodeName,
+      outputPath: resolvedOutputPath,
+      format: resolvedFormat,
+      width: screenshotExport.width,
+      height: screenshotExport.height,
+      bytesWritten,
+      success: true,
+    };
+  } catch (err) {
+    return {
+      index,
+      nodeId: item.nodeId,
+      outputPath: resolvedOutputPath,
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+async function writeBase64ToFile(
+  base64: string,
+  outputPath: string,
+): Promise<number> {
+  const bytes = Buffer.from(base64, "base64");
+  await mkdir(path.dirname(outputPath), { recursive: true });
+  try {
+    await writeFile(outputPath, bytes, { flag: "wx" });
+  } catch (err) {
+    if (isNodeError(err) && err.code === "EEXIST") {
+      throw new Error(`File already exists at outputPath: ${outputPath}`);
+    }
+    throw err;
+  }
+  return bytes.length;
+}
+
+function resolveScale(
+  itemScale?: number,
+  defaultScale?: number,
+): number | undefined {
+  const resolvedScale = itemScale ?? defaultScale;
+  if (resolvedScale === undefined || resolvedScale <= 0) {
+    return undefined;
+  }
+  return resolvedScale;
+}
+
+function isNodeError(err: unknown): err is NodeJS.ErrnoException {
+  return err instanceof Error;
 }
