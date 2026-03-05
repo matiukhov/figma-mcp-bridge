@@ -112,6 +112,9 @@ const handleRequest = async (
               name: style.name,
               fontSize: style.fontSize,
               fontName: style.fontName,
+              textDecoration: style.textDecoration,
+              lineHeight: style.lineHeight,
+              letterSpacing: style.letterSpacing,
             })),
             effects: effectStyles.map((style) => ({
               id: style.id,
