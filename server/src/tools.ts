@@ -10,7 +10,15 @@ type ToolResult = {
   isError?: boolean;
 };
 
-type ExportFormat = "PNG" | "SVG" | "JPG" | "PDF";
+export type ExportFormat = "PNG" | "SVG" | "JPG" | "PDF";
+
+export interface ScreenshotSender {
+  sendWithParams(
+    requestType: string,
+    nodeIds?: string[],
+    params?: Record<string, unknown>
+  ): Promise<BridgeResponse>;
+}
 
 interface ScreenshotExport {
   nodeId: string;
@@ -47,7 +55,7 @@ export function registerTools(server: McpServer, node: Node): void {
     "Get the current Figma page document tree",
     async (): Promise<ToolResult> => {
       return renderResponse(() => node.send("get_document"));
-    },
+    }
   );
 
   server.tool(
@@ -55,7 +63,7 @@ export function registerTools(server: McpServer, node: Node): void {
     "Get the currently selected nodes in Figma",
     async (): Promise<ToolResult> => {
       return renderResponse(() => node.send("get_selection"));
-    },
+    }
   );
 
   server.tool(
@@ -64,7 +72,7 @@ export function registerTools(server: McpServer, node: Node): void {
     toolInputSchemas.get_node.shape,
     async ({ nodeId }): Promise<ToolResult> => {
       return renderResponse(() => node.send("get_node", [nodeId]));
-    },
+    }
   );
 
   server.tool(
@@ -72,7 +80,7 @@ export function registerTools(server: McpServer, node: Node): void {
     "Get all local styles in the document",
     async (): Promise<ToolResult> => {
       return renderResponse(() => node.send("get_styles"));
-    },
+    }
   );
 
   server.tool(
@@ -80,7 +88,7 @@ export function registerTools(server: McpServer, node: Node): void {
     "Get metadata about the current Figma document including file name, pages, and current page info",
     async (): Promise<ToolResult> => {
       return renderResponse(() => node.send("get_metadata"));
-    },
+    }
   );
 
   server.tool(
@@ -93,9 +101,9 @@ export function registerTools(server: McpServer, node: Node): void {
         params.depth = depth;
       }
       return renderResponse(() =>
-        node.sendWithParams("get_design_context", undefined, params),
+        node.sendWithParams("get_design_context", undefined, params)
       );
-    },
+    }
   );
 
   server.tool(
@@ -103,7 +111,7 @@ export function registerTools(server: McpServer, node: Node): void {
     "Get all local variable definitions including variable collections, modes, and variable values. Variables are Figma's system for design tokens (colors, numbers, strings, booleans).",
     async (): Promise<ToolResult> => {
       return renderResponse(() => node.send("get_variable_defs"));
-    },
+    }
   );
 
   server.tool(
@@ -115,9 +123,9 @@ export function registerTools(server: McpServer, node: Node): void {
       if (format) params.format = format;
       if (scale !== undefined && scale > 0) params.scale = scale;
       return renderResponse(() =>
-        node.sendWithParams("get_screenshot", nodeIds, params),
+        node.sendWithParams("get_screenshot", nodeIds, params)
       );
-    },
+    }
   );
 
   server.tool(
@@ -126,36 +134,9 @@ export function registerTools(server: McpServer, node: Node): void {
     toolInputSchemas.save_screenshots.shape,
     async ({ items, format, scale }): Promise<ToolResult> => {
       try {
-        const results: SaveScreenshotItemResult[] = [];
-
-        for (const [index, item] of items.entries()) {
-          const result = await saveScreenshotItemToFile(
-            node,
-            item,
-            index,
-            process.cwd(),
-            format,
-            scale,
-          );
-          results.push(result);
-        }
-
-        const succeeded = results.filter((result) => result.success).length;
-        const failed = results.length - succeeded;
-
+        const result = await executeSaveScreenshots(node, items, format, scale);
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                total: results.length,
-                succeeded,
-                failed,
-                hasErrors: failed > 0,
-                results,
-              }),
-            },
-          ],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       } catch (err) {
         return {
@@ -168,12 +149,50 @@ export function registerTools(server: McpServer, node: Node): void {
           isError: true,
         };
       }
-    },
+    }
   );
 }
 
+export async function executeSaveScreenshots(
+  sender: ScreenshotSender,
+  items: SaveScreenshotItemInput[],
+  format?: ExportFormat,
+  scale?: number
+): Promise<{
+  total: number;
+  succeeded: number;
+  failed: number;
+  hasErrors: boolean;
+  results: SaveScreenshotItemResult[];
+}> {
+  const results: SaveScreenshotItemResult[] = [];
+
+  for (const [index, item] of items.entries()) {
+    const result = await saveScreenshotItemToFile(
+      sender,
+      item,
+      index,
+      process.cwd(),
+      format,
+      scale
+    );
+    results.push(result);
+  }
+
+  const succeeded = results.filter((r) => r.success).length;
+  const failed = results.length - succeeded;
+
+  return {
+    total: results.length,
+    succeeded,
+    failed,
+    hasErrors: failed > 0,
+    results,
+  };
+}
+
 async function renderResponse(
-  fn: () => Promise<BridgeResponse>,
+  fn: () => Promise<BridgeResponse>
 ): Promise<ToolResult> {
   try {
     const resp = await fn();
@@ -201,7 +220,7 @@ async function renderResponse(
 
 function resolveAndValidateOutputPath(
   outputPath: string,
-  workspaceRoot: string,
+  workspaceRoot: string
 ): string {
   const resolvedRoot = path.resolve(workspaceRoot);
   const resolvedPath = path.resolve(resolvedRoot, outputPath);
@@ -210,7 +229,7 @@ function resolveAndValidateOutputPath(
     relativePath.startsWith("..") || path.isAbsolute(relativePath);
   if (escapesRoot) {
     throw new Error(
-      `outputPath must be inside the MCP server working directory: ${resolvedRoot}`,
+      `outputPath must be inside the MCP server working directory: ${resolvedRoot}`
     );
   }
   return resolvedPath;
@@ -235,11 +254,11 @@ function inferFormatFromPath(outputPath: string): ExportFormat | null {
 
 function resolveExportFormat(
   format: ExportFormat | undefined,
-  inferredFormat: ExportFormat | null,
+  inferredFormat: ExportFormat | null
 ): ExportFormat {
   if (format && inferredFormat && format !== inferredFormat) {
     throw new Error(
-      `format ${format} conflicts with outputPath extension (${inferredFormat})`,
+      `format ${format} conflicts with outputPath extension (${inferredFormat})`
     );
   }
   return format ?? inferredFormat ?? "PNG";
@@ -273,21 +292,24 @@ function getSingleScreenshotExport(data: unknown): ScreenshotExport {
 }
 
 async function saveScreenshotItemToFile(
-  node: Node,
+  sender: ScreenshotSender,
   item: SaveScreenshotItemInput,
   index: number,
   workspaceRoot: string,
   defaultFormat?: ExportFormat,
-  defaultScale?: number,
+  defaultScale?: number
 ): Promise<SaveScreenshotItemResult> {
   let resolvedOutputPath = item.outputPath;
 
   try {
-    resolvedOutputPath = resolveAndValidateOutputPath(item.outputPath, workspaceRoot);
+    resolvedOutputPath = resolveAndValidateOutputPath(
+      item.outputPath,
+      workspaceRoot
+    );
     const inferredFormat = inferFormatFromPath(resolvedOutputPath);
     const resolvedFormat = resolveExportFormat(
       item.format ?? defaultFormat,
-      inferredFormat,
+      inferredFormat
     );
     const resolvedScale = resolveScale(item.scale, defaultScale);
 
@@ -296,7 +318,11 @@ async function saveScreenshotItemToFile(
       params.scale = resolvedScale;
     }
 
-    const resp = await node.sendWithParams("get_screenshot", [item.nodeId], params);
+    const resp = await sender.sendWithParams(
+      "get_screenshot",
+      [item.nodeId],
+      params
+    );
     if (resp.error) {
       throw new Error(resp.error);
     }
@@ -304,7 +330,7 @@ async function saveScreenshotItemToFile(
     const screenshotExport = getSingleScreenshotExport(resp.data);
     const bytesWritten = await writeBase64ToFile(
       screenshotExport.base64,
-      resolvedOutputPath,
+      resolvedOutputPath
     );
 
     return {
@@ -331,7 +357,7 @@ async function saveScreenshotItemToFile(
 
 async function writeBase64ToFile(
   base64: string,
-  outputPath: string,
+  outputPath: string
 ): Promise<number> {
   const bytes = Buffer.from(base64, "base64");
   await mkdir(path.dirname(outputPath), { recursive: true });
@@ -348,7 +374,7 @@ async function writeBase64ToFile(
 
 function resolveScale(
   itemScale?: number,
-  defaultScale?: number,
+  defaultScale?: number
 ): number | undefined {
   const resolvedScale = itemScale ?? defaultScale;
   if (resolvedScale === undefined || resolvedScale <= 0) {

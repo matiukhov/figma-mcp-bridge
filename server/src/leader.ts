@@ -2,6 +2,8 @@ import http from "node:http";
 import type { Duplex } from "node:stream";
 import { Bridge } from "./bridge.js";
 import { validateRpc } from "./schema.js";
+import { executeSaveScreenshots } from "./tools.js";
+import type { ExportFormat } from "./tools.js";
 import type { RPCRequest, RPCResponse } from "./types.js";
 import { VERSION } from "./version.js";
 
@@ -50,7 +52,7 @@ export class Leader {
           } else {
             socket.destroy();
           }
-        },
+        }
       );
 
       // Fail fast if port is already in use
@@ -58,7 +60,7 @@ export class Leader {
         reject(
           err.code === "EADDRINUSE"
             ? new Error(`Port ${this.port} already in use`)
-            : err,
+            : err
         );
       });
 
@@ -82,23 +84,37 @@ export class Leader {
         const validationError = validateRpc(
           rpcReq.tool,
           rpcReq.nodeIds,
-          rpcReq.params,
+          rpcReq.params
         );
         if (validationError) {
           this.sendJSON(res, 400, { error: validationError });
           return;
         }
 
+        // Currently the tool that is not forwarded to the plugin is save_screenshots
+        // If more are added we need to refactor to a better abstraction.
+        if (rpcReq.tool === "save_screenshots") {
+          const params = rpcReq.params ?? {};
+          const result = await executeSaveScreenshots(
+            this.bridge,
+            params.items as Parameters<typeof executeSaveScreenshots>[1],
+            params.format as ExportFormat | undefined,
+            params.scale as number | undefined
+          );
+          this.sendJSON(res, 200, { data: result });
+          return;
+        }
+
         const resp = await this.bridge.sendWithParams(
           rpcReq.tool,
           rpcReq.nodeIds,
-          rpcReq.params,
+          rpcReq.params
         );
 
         this.sendJSON(
           res,
           200,
-          resp.error ? { error: resp.error } : { data: resp.data },
+          resp.error ? { error: resp.error } : { data: resp.data }
         );
       } catch (err) {
         this.sendJSON(res, 200, {
@@ -111,7 +127,7 @@ export class Leader {
   private sendJSON(
     res: http.ServerResponse,
     status: number,
-    body: RPCResponse,
+    body: RPCResponse
   ): void {
     res.writeHead(status, { "Content-Type": "application/json" });
     res.end(JSON.stringify(body));
