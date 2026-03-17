@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import hoppLogo from "./assets/hopp-logo.png";
 
 type RequestType =
   | "get_document"
@@ -45,7 +46,7 @@ export default function App() {
   const reconnectTimer = useRef<number | null>(null);
 
   const statusLabel = useMemo(
-    () => (connected ? "Connected" : "Disconnected"),
+    () => (connected ? "WebSocket Connected" : "Disconnected"),
     [connected]
   );
 
@@ -125,18 +126,38 @@ export default function App() {
 
   return (
     <div className="container">
-      <div className="status">
-        <div>WebSocket</div>
-        <span
-          className={`status-badge ${
-            connected ? "connected" : "disconnected"
-          }`}
-        >
-          {statusLabel}
-        </span>
+      <div className="info-section">
+        <div className="info-row">
+          <span className="info-label">File:</span>
+          <span className="info-value">{status.fileName}</span>
+        </div>
+        <div className="info-row">
+          <span className="info-label">Selection:</span>
+          <span className="info-value">{status.selectionCount} node(s)</span>
+        </div>
       </div>
-      <div className="meta">File: {status.fileName}</div>
-      <div className="meta">Selection: {status.selectionCount} node(s)</div>
+
+      <div className="footer">
+        <div className={`badge ${connected ? "connected" : "disconnected"}`}>
+          <span className="dot" />
+          <span className="badge-text">{statusLabel}</span>
+        </div>
+        <a
+          href="https://www.gethopp.app/?ref=figma-mcp-bridge"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="branding"
+        >
+          <img src={hoppLogo} alt="Hopp" className="logo" />
+          <span className="sponsored-text">
+            Sponsored by Hopp
+            <br />
+            The best open-source
+            <br />
+            pair-programming app
+          </span>
+        </a>
+      </div>
     </div>
   );
 }
