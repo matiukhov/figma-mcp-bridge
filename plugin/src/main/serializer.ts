@@ -134,7 +134,9 @@ export const serializeNode = (node: SceneNode): SerializedNode => {
   if ("children" in node) {
     return {
       ...base,
-      children: node.children.map((child) => serializeNode(child)),
+      children: node.children
+        .filter((child) => child.visible !== false)
+        .map((child) => serializeNode(child)),
     };
   }
 

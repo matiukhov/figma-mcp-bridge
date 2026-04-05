@@ -158,7 +158,9 @@ const handleRequest = async (
               ...serialized,
               children: undefined,
               childCount:
-                (node as ChildrenMixin & SceneNode).children?.length ?? 0,
+                (node as ChildrenMixin & SceneNode).children?.filter(
+                  (c) => c.visible !== false
+                ).length ?? 0,
             } as ReturnType<typeof serializeNode> & { childCount: number };
           }
           if (serialized.children) {
@@ -170,7 +172,11 @@ const handleRequest = async (
             const serializedChildren = await Promise.all(
               childNodes
                 .filter(
-                  (n): n is SceneNode => n !== null && n.type !== "DOCUMENT"
+                  (n): n is SceneNode =>
+                    n !== null &&
+                    n.type !== "DOCUMENT" &&
+                    "visible" in n &&
+                    n.visible !== false
                 )
                 .map((n) => serializeWithDepth(n, currentDepth + 1))
             );
