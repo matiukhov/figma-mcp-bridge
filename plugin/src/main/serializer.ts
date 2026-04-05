@@ -38,6 +38,19 @@ const serializePaints = (paints: readonly Paint[] | symbol | undefined) => {
     }));
 };
 
+const serializeLineHeight = (lineHeight: LineHeight | symbol) => {
+  if (isMixed(lineHeight)) return "mixed";
+  if ("value" in lineHeight) {
+    return { value: lineHeight.value, unit: lineHeight.unit };
+  }
+  return { unit: lineHeight.unit }; // AUTO case
+};
+
+const serializeLetterSpacing = (letterSpacing: LetterSpacing | symbol) => {
+  if (isMixed(letterSpacing)) return "mixed";
+  return { value: letterSpacing.value, unit: letterSpacing.unit };
+};
+
 const getBounds = (node: SceneNode): SerializedBounds | undefined => {
   if ("x" in node && "y" in node && "width" in node && "height" in node) {
     return {
@@ -51,11 +64,14 @@ const getBounds = (node: SceneNode): SerializedBounds | undefined => {
 };
 
 const serializeText = (node: TextNode, base: SerializedNode) => {
-  let font: string | undefined;
+  let fontFamily: string | undefined;
+  let fontStyle: string | undefined;
   if (typeof node.fontName === "symbol") {
-    font = "mixed";
+    fontFamily = "mixed";
+    fontStyle = "mixed";
   } else if (node.fontName) {
-    font = node.fontName.family;
+    fontFamily = node.fontName.family;
+    fontStyle = node.fontName.style;
   }
   return {
     ...base,
@@ -63,7 +79,14 @@ const serializeText = (node: TextNode, base: SerializedNode) => {
     styles: {
       ...base.styles,
       fontSize: isMixed(node.fontSize) ? "mixed" : node.fontSize,
-      fontFamily: font,
+      fontFamily,
+      fontStyle,
+      fontWeight: isMixed(node.fontWeight) ? "mixed" : node.fontWeight,
+      textDecoration: isMixed(node.textDecoration)
+        ? "mixed"
+        : node.textDecoration,
+      lineHeight: serializeLineHeight(node.lineHeight),
+      letterSpacing: serializeLetterSpacing(node.letterSpacing),
       textAlignHorizontal: isMixed(node.textAlignHorizontal)
         ? "mixed"
         : node.textAlignHorizontal,
