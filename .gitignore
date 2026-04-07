@@ -179,3 +179,5 @@ server/dist/
 # Editor/IDE
 .idea/
 .vscode/
+
+.claude/

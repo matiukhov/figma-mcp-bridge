@@ -91,7 +91,7 @@ export class Leader {
           return;
         }
 
-        // Currently the tool that is not forwarded to the plugin is save_screenshots
+        // Currently the only tool that is not forwarded to the plugin is save_screenshots
         // If more are added we need to refactor to a better abstraction.
         if (rpcReq.tool === "save_screenshots") {
           const params = rpcReq.params ?? {};

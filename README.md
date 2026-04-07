@@ -4,6 +4,7 @@
 
 - [Demo](#demo)
 - [Quick Start](#quick-start)
+- [Available Tools](#available-tools)
 - [Local development](#local-development)
 - [Structure](#structure)
 - [How it works](#how-it-works)
@@ -53,6 +54,20 @@ Download the plugin from the [latest release](https://github.com/gethopp/figma-m
 Open a Figma file, run the plugin, and start prompting your AI tool. The MCP server will automatically connect to the plugin.
 
 If you want to know more about how it works, read the [How it works](#how-it-works) section.
+
+## Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `get_document` | Get the current Figma page document tree |
+| `get_selection` | Get the currently selected nodes in Figma |
+| `get_node` | Get a specific Figma node by ID (colon format, e.g. `4029:12345`) |
+| `get_styles` | Get all local paint, text, effect, and grid styles |
+| `get_metadata` | Get file name, pages, and current page info |
+| `get_design_context` | Get a depth-limited tree optimized for understanding design context |
+| `get_variable_defs` | Get all variable collections, modes, and values (design tokens) |
+| `get_screenshot` | Export nodes as PNG/SVG/JPG/PDF (base64-encoded) |
+| `save_screenshots` | Export and save screenshots directly to the local filesystem |
 
 ## Local development
 
