@@ -4,6 +4,7 @@ import path from "node:path";
 import type { Node } from "./node.js";
 import { toolInputSchemas } from "./schema.js";
 import type { BridgeResponse } from "./types.js";
+import { Follower } from "./follower.js";
 
 type ToolResult = {
   content: Array<{ type: "text"; text: string }>;
@@ -49,16 +50,19 @@ interface SaveScreenshotItemResult {
   error?: string;
 }
 
-export function registerTools(server: McpServer, node: Node, port: number): void {
+export function registerTools(
+  server: McpServer,
+  node: Node,
+  port: number
+): void {
   server.tool(
     "list_files",
     "List all currently connected Figma files. Returns fileKey and fileName for each. Use the fileKey to target a specific file in other tools.",
     async (): Promise<ToolResult> => {
       try {
         let files = node.listConnectedFiles();
-        if (files.length === 0) {
+        if (files === undefined) {
           // Follower: fetch via RPC from leader
-          const { Follower } = await import("./follower.js");
           const follower = new Follower(`http://localhost:${port}`);
           files = await follower.listConnectedFiles();
         }
@@ -84,7 +88,9 @@ export function registerTools(server: McpServer, node: Node, port: number): void
     "Get the current Figma page document tree. When multiple files are connected, specify fileKey.",
     toolInputSchemas.get_document.shape,
     async ({ fileKey }): Promise<ToolResult> => {
-      return renderResponse(() => node.send("get_document", undefined, fileKey));
+      return renderResponse(() =>
+        node.send("get_document", undefined, fileKey)
+      );
     }
   );
 
@@ -93,7 +99,9 @@ export function registerTools(server: McpServer, node: Node, port: number): void
     "Get the currently selected nodes in Figma. When multiple files are connected, specify fileKey.",
     toolInputSchemas.get_selection.shape,
     async ({ fileKey }): Promise<ToolResult> => {
-      return renderResponse(() => node.send("get_selection", undefined, fileKey));
+      return renderResponse(() =>
+        node.send("get_selection", undefined, fileKey)
+      );
     }
   );
 
@@ -120,7 +128,9 @@ export function registerTools(server: McpServer, node: Node, port: number): void
     "Get metadata about the current Figma document including file name, pages, and current page info. When multiple files are connected, specify fileKey.",
     toolInputSchemas.get_metadata.shape,
     async ({ fileKey }): Promise<ToolResult> => {
-      return renderResponse(() => node.send("get_metadata", undefined, fileKey));
+      return renderResponse(() =>
+        node.send("get_metadata", undefined, fileKey)
+      );
     }
   );
 
@@ -144,7 +154,9 @@ export function registerTools(server: McpServer, node: Node, port: number): void
     "Get all local variable definitions including variable collections, modes, and variable values. Variables are Figma's system for design tokens (colors, numbers, strings, booleans). When multiple files are connected, specify fileKey.",
     toolInputSchemas.get_variable_defs.shape,
     async ({ fileKey }): Promise<ToolResult> => {
-      return renderResponse(() => node.send("get_variable_defs", undefined, fileKey));
+      return renderResponse(() =>
+        node.send("get_variable_defs", undefined, fileKey)
+      );
     }
   );
 
@@ -173,7 +185,12 @@ export function registerTools(server: McpServer, node: Node, port: number): void
           sendWithParams: (requestType, nodeIds, params) =>
             node.sendWithParams(requestType, nodeIds, params, fileKey),
         };
-        const result = await executeSaveScreenshots(sender, items, format, scale);
+        const result = await executeSaveScreenshots(
+          sender,
+          items,
+          format,
+          scale
+        );
         return {
           content: [{ type: "text", text: JSON.stringify(result) }],
         };
