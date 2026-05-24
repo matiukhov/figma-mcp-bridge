@@ -104,7 +104,12 @@ export default function App() {
       if (disposed) return;
 
       if (socketRef.current) {
-        socketRef.current.close();
+        const previousSocket = socketRef.current;
+        previousSocket.onopen = null;
+        previousSocket.onclose = null;
+        previousSocket.onerror = null;
+        previousSocket.onmessage = null;
+        previousSocket.close();
       }
 
       const wsUrl = `${WS_BASE_URL}?fileKey=${encodeURIComponent(status.fileKey)}&fileName=${encodeURIComponent(status.fileName)}`;
@@ -133,6 +138,7 @@ export default function App() {
       };
 
       ws.onmessage = (event) => {
+        if (disposed || socketRef.current !== ws) return;
         const payload = JSON.parse(event.data) as ServerRequest;
         parent.postMessage({ pluginMessage: { type: "server-request", payload } }, "*");
       };

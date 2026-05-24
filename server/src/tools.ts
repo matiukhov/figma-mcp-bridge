@@ -1,6 +1,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { lookup } from "node:dns/promises";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { isIP } from "node:net";
 import path from "node:path";
+import type { z } from "zod";
 import type { Node } from "./node.js";
 import {
   createFrameInput,
@@ -25,6 +28,10 @@ import {
 } from "./schema.js";
 import type { BridgeResponse } from "./types.js";
 import { Follower } from "./follower.js";
+
+const MAX_IMAGE_BYTES = 32 * 1024 * 1024;
+const IMAGE_FETCH_TIMEOUT_MS = 15_000;
+const MAX_IMAGE_REDIRECTS = 5;
 
 type ToolResult = {
   content: Array<{ type: "text"; text: string }>;
@@ -220,7 +227,10 @@ export function registerTools(
     "set_text_properties",
     "Patch common text properties such as font family/style, size, alignment, auto-resize, line height, letter spacing, fill color, and bounds. When multiple files are connected, specify fileKey.",
     setTextPropertiesShape.shape,
-    async ({ nodeId, fileKey, ...properties }): Promise<ToolResult> => {
+    async (args): Promise<ToolResult> => {
+      const parsed = parseToolInput(setTextPropertiesInput, args);
+      if (!parsed.success) return parsed.error;
+      const { nodeId, fileKey, ...properties } = parsed.data;
       return renderResponse(() =>
         node.sendWithParams("set_text_properties", [nodeId], properties, fileKey)
       );
@@ -231,7 +241,10 @@ export function registerTools(
     "set_node_properties",
     "Patch common node properties such as name, position, size, visibility, opacity, and corner radius. Only supported properties for the target node type may be changed. Use set_solid_fill or set_gradient_fill to change paints. When multiple files are connected, specify fileKey.",
     setNodePropertiesInput.shape,
-    async ({ nodeId, fileKey, ...properties }): Promise<ToolResult> => {
+    async (args): Promise<ToolResult> => {
+      const parsed = parseToolInput(toolInputSchemas.set_node_properties, args);
+      if (!parsed.success) return parsed.error;
+      const { nodeId, fileKey, ...properties } = parsed.data;
       return renderResponse(() =>
         node.sendWithParams("set_node_properties", [nodeId], properties, fileKey)
       );
@@ -275,7 +288,10 @@ export function registerTools(
     "set_stroke_properties",
     "Patch stroke geometry properties: weight, align, dash pattern, cap, join. Use set_solid_fill/set_gradient_fill with target='stroke' to set the paint itself.",
     setStrokePropertiesInput.shape,
-    async ({ nodeId, fileKey, ...params }): Promise<ToolResult> => {
+    async (args): Promise<ToolResult> => {
+      const parsed = parseToolInput(toolInputSchemas.set_stroke_properties, args);
+      if (!parsed.success) return parsed.error;
+      const { nodeId, fileKey, ...params } = parsed.data;
       return renderResponse(() =>
         node.sendWithParams("set_stroke_properties", [nodeId], params, fileKey)
       );
@@ -286,7 +302,10 @@ export function registerTools(
     "set_auto_layout",
     "Configure auto-layout on a frame: direction, gap, padding, alignment, sizing modes, wrap. Set layoutMode='NONE' to disable auto-layout on the frame.",
     setAutoLayoutInput.shape,
-    async ({ nodeId, fileKey, ...params }): Promise<ToolResult> => {
+    async (args): Promise<ToolResult> => {
+      const parsed = parseToolInput(toolInputSchemas.set_auto_layout, args);
+      if (!parsed.success) return parsed.error;
+      const { nodeId, fileKey, ...params } = parsed.data;
       return renderResponse(() =>
         node.sendWithParams("set_auto_layout", [nodeId], params, fileKey)
       );
@@ -297,7 +316,10 @@ export function registerTools(
     "create_frame",
     "Create a new frame, optionally inside a specified parent. You can set name, size, position, and a solid fill. When multiple files are connected, specify fileKey.",
     createFrameInput.shape,
-    async ({ fileKey, ...params }): Promise<ToolResult> => {
+    async (args): Promise<ToolResult> => {
+      const parsed = parseToolInput(toolInputSchemas.create_frame, args);
+      if (!parsed.success) return parsed.error;
+      const { fileKey, ...params } = parsed.data;
       return renderResponse(() =>
         node.sendWithParams("create_frame", undefined, params, fileKey)
       );
@@ -308,7 +330,10 @@ export function registerTools(
     "create_text",
     "Create a new text node, optionally inside a specified parent. You can set its content, font, size, alignment, color, position, and bounds. When multiple files are connected, specify fileKey.",
     createTextShape.shape,
-    async ({ fileKey, ...params }): Promise<ToolResult> => {
+    async (args): Promise<ToolResult> => {
+      const parsed = parseToolInput(createTextInput, args);
+      if (!parsed.success) return parsed.error;
+      const { fileKey, ...params } = parsed.data;
       return renderResponse(() =>
         node.sendWithParams("create_text", undefined, params, fileKey)
       );
@@ -319,7 +344,10 @@ export function registerTools(
     "create_shape",
     "Create a rectangle, ellipse, or line, optionally inside a specified parent. You can set its size, position, rotation, fill, and stroke. When multiple files are connected, specify fileKey.",
     createShapeShape.shape,
-    async ({ fileKey, ...params }): Promise<ToolResult> => {
+    async (args): Promise<ToolResult> => {
+      const parsed = parseToolInput(createShapeInput, args);
+      if (!parsed.success) return parsed.error;
+      const { fileKey, ...params } = parsed.data;
       return renderResponse(() =>
         node.sendWithParams("create_shape", undefined, params, fileKey)
       );
@@ -532,6 +560,24 @@ async function renderResponse(
   }
 }
 
+function parseToolInput<T>(
+  schema: z.ZodType<T>,
+  args: unknown
+): { success: true; data: T } | { success: false; error: ToolResult } {
+  const result = schema.safeParse(args);
+  if (result.success) {
+    return { success: true, data: result.data };
+  }
+
+  return {
+    success: false,
+    error: {
+      content: [{ type: "text", text: result.error.issues[0].message }],
+      isError: true,
+    },
+  };
+}
+
 function resolveAndValidateOutputPath(
   outputPath: string,
   workspaceRoot: string
@@ -554,11 +600,7 @@ async function loadImageSourceAsBase64(
   workspaceRoot: string
 ): Promise<string> {
   if (/^https?:\/\//i.test(source)) {
-    const resp = await fetch(source);
-    if (!resp.ok) {
-      throw new Error(`Failed to fetch image: ${resp.status} ${resp.statusText}`);
-    }
-    const bytes = Buffer.from(await resp.arrayBuffer());
+    const bytes = await fetchImageBytes(source);
     return bytes.toString("base64");
   }
 
@@ -567,11 +609,161 @@ async function loadImageSourceAsBase64(
     return dataUrlMatch[1];
   }
 
-  const resolvedPath = path.isAbsolute(source)
-    ? source
-    : path.resolve(workspaceRoot, source);
+  const resolvedRoot = path.resolve(workspaceRoot);
+  const resolvedPath = path.resolve(resolvedRoot, source);
+  const relativePath = path.relative(resolvedRoot, resolvedPath);
+  const escapesRoot =
+    relativePath.startsWith("..") || path.isAbsolute(relativePath);
+  if (escapesRoot) {
+    throw new Error(
+      `image source must be inside the MCP server working directory: ${resolvedRoot}`
+    );
+  }
   const bytes = await readFile(resolvedPath);
+  if (bytes.length > MAX_IMAGE_BYTES) {
+    throw new Error(`Image exceeds ${MAX_IMAGE_BYTES} bytes`);
+  }
   return bytes.toString("base64");
+}
+
+async function fetchImageBytes(source: string): Promise<Buffer> {
+  let url = new URL(source);
+  let redirects = 0;
+
+  while (true) {
+    await assertSafeHttpUrl(url);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), IMAGE_FETCH_TIMEOUT_MS);
+    let resp: Response;
+    try {
+      resp = await fetch(url, {
+        signal: controller.signal,
+        redirect: "manual",
+      });
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        throw new Error(`Timed out fetching image after ${IMAGE_FETCH_TIMEOUT_MS}ms`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    if (resp.status >= 300 && resp.status < 400) {
+      const location = resp.headers.get("location");
+      if (!location) {
+        throw new Error(`Image redirect missing Location header: ${resp.status}`);
+      }
+      redirects += 1;
+      if (redirects > MAX_IMAGE_REDIRECTS) {
+        throw new Error(`Image fetch exceeded ${MAX_IMAGE_REDIRECTS} redirects`);
+      }
+      url = new URL(location, url);
+      continue;
+    }
+
+    if (!resp.ok) {
+      throw new Error(`Failed to fetch image: ${resp.status} ${resp.statusText}`);
+    }
+
+    const contentLength = resp.headers.get("content-length");
+    if (contentLength !== null) {
+      const size = Number(contentLength);
+      if (!Number.isFinite(size) || size < 0) {
+        throw new Error("Invalid image Content-Length header");
+      }
+      if (size > MAX_IMAGE_BYTES) {
+        throw new Error(`Image exceeds ${MAX_IMAGE_BYTES} bytes`);
+      }
+    }
+
+    return readBoundedResponse(resp, MAX_IMAGE_BYTES);
+  }
+}
+
+async function assertSafeHttpUrl(url: URL): Promise<void> {
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("Image URL must use http or https");
+  }
+  if (!url.hostname) {
+    throw new Error("Image URL must include a hostname");
+  }
+
+  const hostname = normalizeHostname(url.hostname);
+  const literalIp = isIP(hostname);
+  if (literalIp !== 0) {
+    if (isBlockedIp(hostname)) {
+      throw new Error("Image URL resolves to a blocked internal address");
+    }
+    return;
+  }
+
+  const addresses = await lookup(hostname, { all: true, verbatim: true });
+  if (addresses.length === 0) {
+    throw new Error("Image URL hostname did not resolve");
+  }
+  if (addresses.some((address) => isBlockedIp(address.address))) {
+    throw new Error("Image URL resolves to a blocked internal address");
+  }
+}
+
+function isBlockedIp(address: string): boolean {
+  if (isIP(address) === 4) {
+    const [a, b] = address.split(".").map(Number);
+    return (
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      a >= 224
+    );
+  }
+
+  const normalized = address.toLowerCase();
+  if (normalized.startsWith("::ffff:")) {
+    return isBlockedIp(normalized.slice("::ffff:".length));
+  }
+
+  return (
+    normalized === "::" ||
+    normalized === "::1" ||
+    normalized.startsWith("fc") ||
+    normalized.startsWith("fd") ||
+    /^fe[89ab]:/.test(normalized) ||
+    normalized.startsWith("ff")
+  );
+}
+
+function normalizeHostname(hostname: string): string {
+  if (hostname.startsWith("[") && hostname.endsWith("]")) {
+    return hostname.slice(1, -1);
+  }
+  return hostname;
+}
+
+async function readBoundedResponse(
+  resp: Response,
+  maxBytes: number
+): Promise<Buffer> {
+  if (!resp.body) {
+    return Buffer.alloc(0);
+  }
+
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of resp.body) {
+    const bytes = Buffer.from(chunk);
+    total += bytes.length;
+    if (total > maxBytes) {
+      throw new Error(`Image exceeds ${maxBytes} bytes`);
+    }
+    chunks.push(bytes);
+  }
+  return Buffer.concat(chunks, total);
 }
 
 function inferFormatFromPath(outputPath: string): ExportFormat | null {

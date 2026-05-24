@@ -201,7 +201,7 @@ export const ungroupNodeInput = z.object({
 export const setEffectsInput = z.object({
   nodeId: figmaNodeId.describe("The node ID to update"),
   effects: z
-    .array(z.union([shadowEffect, blurEffect]))
+    .array(z.discriminatedUnion("type", [shadowEffect, blurEffect]))
     .describe(
       "Full replacement list of effects. Pass [] to clear all effects. Each entry is a drop/inner shadow or a layer/background blur."
     ),
@@ -644,7 +644,7 @@ export const toolInputSchemas = {
       .min(1)
       .describe("List of node IDs to delete"),
     confirm: z
-      .literal(true)
+      .boolean()
       .describe("Must be true to confirm deletion"),
     fileKey: fileKeyField,
   }),
@@ -702,14 +702,14 @@ const rpcToArgs: Record<
   get_variable_defs: (_nodeIds, params) => ({ ...params }),
   get_screenshot: (nodeIds, params) => ({ nodeIds, ...params }),
   set_node_visibility: (_nodeIds, params) => ({ ...params }),
-  set_text_content: (nodeIds, params) => ({ nodeId: nodeIds?.[0], ...params }),
-  set_text_properties: (nodeIds, params) => ({ nodeId: nodeIds?.[0], ...params }),
-  set_node_properties: (nodeIds, params) => ({ nodeId: nodeIds?.[0], ...params }),
-  set_gradient_fill: (nodeIds, params) => ({ nodeId: nodeIds?.[0], ...params }),
-  set_solid_fill: (nodeIds, params) => ({ nodeId: nodeIds?.[0], ...params }),
-  set_effects: (nodeIds, params) => ({ nodeId: nodeIds?.[0], ...params }),
-  set_stroke_properties: (nodeIds, params) => ({ nodeId: nodeIds?.[0], ...params }),
-  set_auto_layout: (nodeIds, params) => ({ nodeId: nodeIds?.[0], ...params }),
+  set_text_content: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
+  set_text_properties: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
+  set_node_properties: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
+  set_gradient_fill: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
+  set_solid_fill: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
+  set_effects: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
+  set_stroke_properties: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
+  set_auto_layout: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
   create_frame: (_nodeIds, params) => ({ ...params }),
   create_text: (_nodeIds, params) => ({ ...params }),
   create_shape: (_nodeIds, params) => ({ ...params }),
