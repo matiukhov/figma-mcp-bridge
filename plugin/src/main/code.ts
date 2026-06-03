@@ -30,11 +30,24 @@ type RequestType =
   | "scroll_and_zoom_into_view"
   | "delete_nodes";
 
+type ServerRequestParams = Record<string, unknown> & {
+  format?: "PNG" | "SVG" | "JPG" | "PDF";
+  scale?: number;
+  /**
+   * When true, export the node using its absolute bounds (the same behavior
+   * exposed by Figma REST image export via `use_absolute_bounds`). This clips
+   * raster exports such as PNG to the node's logical bounds instead of the
+   * rendered/tight bounds including overflow/effects.
+   */
+  clip?: boolean;
+  depth?: number;
+};
+
 type ServerRequest = {
   type: RequestType;
   requestId: string;
   nodeIds?: string[];
-  params?: Record<string, unknown>;
+  params?: ServerRequestParams;
 };
 
 type PluginResponse = {
@@ -559,6 +572,7 @@ const handleRequest = async (
             : "PNG";
         const scale =
           typeof request.params?.scale === "number" ? request.params.scale : 2;
+        const clip = request.params?.clip === true;
 
         // Determine which node(s) to export
         let targetNodes: SceneNode[];
@@ -582,19 +596,24 @@ const handleRequest = async (
 
         const exports = await Promise.all(
           targetNodes.map(async (node) => {
+            const commonSettings = clip
+              ? { contentsOnly: true, useAbsoluteBounds: true }
+              : {};
             const settings: ExportSettings =
               format === "SVG"
-                ? { format: "SVG" }
+                ? { format: "SVG", ...commonSettings }
                 : format === "PDF"
-                  ? { format: "PDF" }
+                  ? { format: "PDF", ...commonSettings }
                   : format === "JPG"
                     ? {
                         format: "JPG",
                         constraint: { type: "SCALE", value: scale },
+                        ...commonSettings,
                       }
                     : {
                         format: "PNG",
                         constraint: { type: "SCALE", value: scale },
+                        ...commonSettings,
                       };
 
             const bytes = await node.exportAsync(settings);
