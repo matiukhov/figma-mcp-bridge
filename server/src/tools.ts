@@ -62,6 +62,7 @@ interface SaveScreenshotItemInput {
   outputPath: string;
   format?: ExportFormat;
   scale?: number;
+  clip?: boolean;
 }
 
 interface SaveScreenshotItemResult {
@@ -191,10 +192,11 @@ export function registerTools(
     "get_screenshot",
     "Export a screenshot of the selected nodes or specific nodes by ID. Returns base64-encoded image data. When multiple files are connected, specify fileKey.",
     toolInputSchemas.get_screenshot.shape,
-    async ({ nodeIds, format, scale, fileKey }): Promise<ToolResult> => {
+    async ({ nodeIds, format, scale, clip, fileKey }): Promise<ToolResult> => {
       const params: Record<string, unknown> = {};
       if (format) params.format = format;
       if (scale !== undefined && scale > 0) params.scale = scale;
+      if (clip !== undefined) params.clip = clip;
       return renderResponse(() =>
         node.sendWithParams("get_screenshot", nodeIds, params, fileKey)
       );
@@ -464,7 +466,7 @@ export function registerTools(
     "save_screenshots",
     "Export screenshots for multiple nodes and save them directly to the local filesystem. Returns metadata only (no base64). When multiple files are connected, specify fileKey.",
     toolInputSchemas.save_screenshots.shape,
-    async ({ items, format, scale, fileKey }): Promise<ToolResult> => {
+    async ({ items, format, scale, clip, fileKey }): Promise<ToolResult> => {
       try {
         // Create a sender bound to the specific fileKey
         const sender: ScreenshotSender = {
@@ -475,7 +477,8 @@ export function registerTools(
           sender,
           items,
           format,
-          scale
+          scale,
+          clip
         );
         return {
           content: [{ type: "text", text: JSON.stringify(result) }],
@@ -499,7 +502,8 @@ export async function executeSaveScreenshots(
   sender: ScreenshotSender,
   items: SaveScreenshotItemInput[],
   format?: ExportFormat,
-  scale?: number
+  scale?: number,
+  clip?: boolean
 ): Promise<{
   total: number;
   succeeded: number;
@@ -516,7 +520,8 @@ export async function executeSaveScreenshots(
       index,
       process.cwd(),
       format,
-      scale
+      scale,
+      clip
     );
     results.push(result);
   }
@@ -828,7 +833,8 @@ async function saveScreenshotItemToFile(
   index: number,
   workspaceRoot: string,
   defaultFormat?: ExportFormat,
-  defaultScale?: number
+  defaultScale?: number,
+  defaultClip?: boolean
 ): Promise<SaveScreenshotItemResult> {
   let resolvedOutputPath = item.outputPath;
 
@@ -843,10 +849,14 @@ async function saveScreenshotItemToFile(
       inferredFormat
     );
     const resolvedScale = resolveScale(item.scale, defaultScale);
+    const resolvedClip = item.clip ?? defaultClip;
 
     const params: Record<string, unknown> = { format: resolvedFormat };
     if (resolvedScale !== undefined) {
       params.scale = resolvedScale;
+    }
+    if (resolvedClip !== undefined) {
+      params.clip = resolvedClip;
     }
 
     const resp = await sender.sendWithParams(
