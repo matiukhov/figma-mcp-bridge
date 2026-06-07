@@ -62,6 +62,7 @@ interface SaveScreenshotItemInput {
   outputPath: string;
   format?: ExportFormat;
   scale?: number;
+  clip?: boolean;
 }
 
 interface SaveScreenshotItemResult {
@@ -191,10 +192,11 @@ export function registerTools(
     "get_screenshot",
     "Export a screenshot of the selected nodes or specific nodes by ID. Returns base64-encoded image data. When multiple files are connected, specify fileKey.",
     toolInputSchemas.get_screenshot.shape,
-    async ({ nodeIds, format, scale, fileKey }): Promise<ToolResult> => {
+    async ({ nodeIds, format, scale, clip, fileKey }): Promise<ToolResult> => {
       const params: Record<string, unknown> = {};
       if (format) params.format = format;
       if (scale !== undefined && scale > 0) params.scale = scale;
+      if (clip !== undefined) params.clip = clip;
       return renderResponse(() =>
         node.sendWithParams("get_screenshot", nodeIds, params, fileKey)
       );
@@ -207,7 +209,12 @@ export function registerTools(
     toolInputSchemas.set_node_visibility.shape,
     async ({ items, fileKey }): Promise<ToolResult> => {
       return renderResponse(() =>
-        node.sendWithParams("set_node_visibility", undefined, { items }, fileKey)
+        node.sendWithParams(
+          "set_node_visibility",
+          undefined,
+          { items },
+          fileKey
+        )
       );
     }
   );
@@ -232,7 +239,12 @@ export function registerTools(
       if (!parsed.success) return parsed.error;
       const { nodeId, fileKey, ...properties } = parsed.data;
       return renderResponse(() =>
-        node.sendWithParams("set_text_properties", [nodeId], properties, fileKey)
+        node.sendWithParams(
+          "set_text_properties",
+          [nodeId],
+          properties,
+          fileKey
+        )
       );
     }
   );
@@ -246,7 +258,12 @@ export function registerTools(
       if (!parsed.success) return parsed.error;
       const { nodeId, fileKey, ...properties } = parsed.data;
       return renderResponse(() =>
-        node.sendWithParams("set_node_properties", [nodeId], properties, fileKey)
+        node.sendWithParams(
+          "set_node_properties",
+          [nodeId],
+          properties,
+          fileKey
+        )
       );
     }
   );
@@ -289,7 +306,10 @@ export function registerTools(
     "Patch stroke geometry properties: weight, align, dash pattern, cap, join. Use set_solid_fill/set_gradient_fill with target='stroke' to set the paint itself.",
     setStrokePropertiesInput.shape,
     async (args): Promise<ToolResult> => {
-      const parsed = parseToolInput(toolInputSchemas.set_stroke_properties, args);
+      const parsed = parseToolInput(
+        toolInputSchemas.set_stroke_properties,
+        args
+      );
       if (!parsed.success) return parsed.error;
       const { nodeId, fileKey, ...params } = parsed.data;
       return renderResponse(() =>
@@ -360,7 +380,10 @@ export function registerTools(
     createImageInput.shape,
     async ({ source, fileKey, ...params }): Promise<ToolResult> => {
       try {
-        const imageBase64 = await loadImageSourceAsBase64(source, process.cwd());
+        const imageBase64 = await loadImageSourceAsBase64(
+          source,
+          process.cwd()
+        );
         return await renderResponse(() =>
           node.sendWithParams(
             "create_image",
@@ -444,7 +467,12 @@ export function registerTools(
     scrollAndZoomIntoViewInput.shape,
     async ({ nodeIds, fileKey }): Promise<ToolResult> => {
       return renderResponse(() =>
-        node.sendWithParams("scroll_and_zoom_into_view", nodeIds, undefined, fileKey)
+        node.sendWithParams(
+          "scroll_and_zoom_into_view",
+          nodeIds,
+          undefined,
+          fileKey
+        )
       );
     }
   );
@@ -464,7 +492,7 @@ export function registerTools(
     "save_screenshots",
     "Export screenshots for multiple nodes and save them directly to the local filesystem. Returns metadata only (no base64). When multiple files are connected, specify fileKey.",
     toolInputSchemas.save_screenshots.shape,
-    async ({ items, format, scale, fileKey }): Promise<ToolResult> => {
+    async ({ items, format, scale, clip, fileKey }): Promise<ToolResult> => {
       try {
         // Create a sender bound to the specific fileKey
         const sender: ScreenshotSender = {
@@ -475,7 +503,8 @@ export function registerTools(
           sender,
           items,
           format,
-          scale
+          scale,
+          clip
         );
         return {
           content: [{ type: "text", text: JSON.stringify(result) }],
@@ -499,7 +528,8 @@ export async function executeSaveScreenshots(
   sender: ScreenshotSender,
   items: SaveScreenshotItemInput[],
   format?: ExportFormat,
-  scale?: number
+  scale?: number,
+  clip?: boolean
 ): Promise<{
   total: number;
   succeeded: number;
@@ -516,7 +546,8 @@ export async function executeSaveScreenshots(
       index,
       process.cwd(),
       format,
-      scale
+      scale,
+      clip
     );
     results.push(result);
   }
@@ -634,7 +665,10 @@ async function fetchImageBytes(source: string): Promise<Buffer> {
     await assertSafeHttpUrl(url);
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), IMAGE_FETCH_TIMEOUT_MS);
+    const timeout = setTimeout(
+      () => controller.abort(),
+      IMAGE_FETCH_TIMEOUT_MS
+    );
     let resp: Response;
     try {
       resp = await fetch(url, {
@@ -643,7 +677,9 @@ async function fetchImageBytes(source: string): Promise<Buffer> {
       });
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
-        throw new Error(`Timed out fetching image after ${IMAGE_FETCH_TIMEOUT_MS}ms`);
+        throw new Error(
+          `Timed out fetching image after ${IMAGE_FETCH_TIMEOUT_MS}ms`
+        );
       }
       throw err;
     } finally {
@@ -653,18 +689,24 @@ async function fetchImageBytes(source: string): Promise<Buffer> {
     if (resp.status >= 300 && resp.status < 400) {
       const location = resp.headers.get("location");
       if (!location) {
-        throw new Error(`Image redirect missing Location header: ${resp.status}`);
+        throw new Error(
+          `Image redirect missing Location header: ${resp.status}`
+        );
       }
       redirects += 1;
       if (redirects > MAX_IMAGE_REDIRECTS) {
-        throw new Error(`Image fetch exceeded ${MAX_IMAGE_REDIRECTS} redirects`);
+        throw new Error(
+          `Image fetch exceeded ${MAX_IMAGE_REDIRECTS} redirects`
+        );
       }
       url = new URL(location, url);
       continue;
     }
 
     if (!resp.ok) {
-      throw new Error(`Failed to fetch image: ${resp.status} ${resp.statusText}`);
+      throw new Error(
+        `Failed to fetch image: ${resp.status} ${resp.statusText}`
+      );
     }
 
     const contentLength = resp.headers.get("content-length");
@@ -828,7 +870,8 @@ async function saveScreenshotItemToFile(
   index: number,
   workspaceRoot: string,
   defaultFormat?: ExportFormat,
-  defaultScale?: number
+  defaultScale?: number,
+  defaultClip?: boolean
 ): Promise<SaveScreenshotItemResult> {
   let resolvedOutputPath = item.outputPath;
 
@@ -843,10 +886,14 @@ async function saveScreenshotItemToFile(
       inferredFormat
     );
     const resolvedScale = resolveScale(item.scale, defaultScale);
+    const resolvedClip = item.clip ?? defaultClip;
 
     const params: Record<string, unknown> = { format: resolvedFormat };
     if (resolvedScale !== undefined) {
       params.scale = resolvedScale;
+    }
+    if (resolvedClip !== undefined) {
+      params.clip = resolvedClip;
     }
 
     const resp = await sender.sendWithParams(

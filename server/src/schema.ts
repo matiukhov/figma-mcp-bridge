@@ -542,6 +542,12 @@ export const toolInputSchemas = {
       .number()
       .optional()
       .describe("Export scale for raster formats (default 2)"),
+    clip: z
+      .boolean()
+      .optional()
+      .describe(
+        "When true, export using Figma's absolute node bounds (REST use_absolute_bounds / plugin useAbsoluteBounds) so PNGs are clipped to the node's logical bounds",
+      ),
     fileKey: fileKeyField,
   }),
 
@@ -681,6 +687,12 @@ export const toolInputSchemas = {
             .number()
             .optional()
             .describe("Per-item export scale override for raster formats"),
+          clip: z
+            .boolean()
+            .optional()
+            .describe(
+              "Per-item clipping override. When true, PNGs are clipped to the node's logical bounds using Figma's absolute node bounds.",
+            ),
         }),
       )
       .min(1)
@@ -692,6 +704,12 @@ export const toolInputSchemas = {
       .number()
       .optional()
       .describe("Default export scale for raster formats (default 2)"),
+    clip: z
+      .boolean()
+      .optional()
+      .describe(
+        "Default clipping behavior for saved screenshots. When true, PNGs are clipped to the node's logical bounds using Figma's absolute node bounds.",
+      ),
     fileKey: fileKeyField,
   }),
 } as const;
