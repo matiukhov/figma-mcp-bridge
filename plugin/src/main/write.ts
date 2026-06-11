@@ -94,11 +94,14 @@ function getNonnegativeNumber(value: unknown, field: string): number {
   return number;
 }
 
-/** Reads a Figma node id string in colon-separated format. */
+/** Reads a Figma node id string in colon-separated or instance-child format. */
 function getFigmaNodeId(value: unknown, field: string): string {
   const nodeId = getString(value, field);
-  if (!/^\d+:\d+$/.test(nodeId)) {
-    fail("INVALID_INPUT", `${field} must use colon format, e.g. '4029:12345'`);
+  if (!/^(\d+:\d+|I\d+:\d+(;\d+:\d+)+)$/.test(nodeId)) {
+    fail(
+      "INVALID_INPUT",
+      `${field} must use colon format, e.g. '4029:12345', or instance-child format 'I12740:17806;12740:17793'`
+    );
   }
   return nodeId;
 }
@@ -323,7 +326,13 @@ function validateWriteToolParams(
 
 /** Converts a hex color string into the RGBA values expected by the Figma API. */
 function hexToRGBA(value: string): RGBA {
-  const hex = value.replace("#", "");
+  let hex = value.replace("#", "");
+  if (hex.length === 3) {
+    hex = hex
+      .split("")
+      .map((char) => `${char}${char}`)
+      .join("");
+  }
   if (hex.length !== 6 && hex.length !== 8) {
     fail("INVALID_COLOR", `Invalid color: ${value}`);
   }
@@ -688,11 +697,10 @@ function collectNodes(root: ChildrenMixin, acc: SceneNode[]): void {
   }
 }
 
+const MAX_FIND_NODES_RESULTS = 100;
+
 /** Finds current-page nodes by id, name, plugin key, or parent id. */
 async function findNodes(params: RequestParams): Promise<unknown> {
-  const nodes: SceneNode[] = [];
-  collectNodes(figma.currentPage, nodes);
-  let matches = nodes;
   const rawQuery = getOptionalString(params?.query);
   let queryFilters: Record<string, unknown> | undefined;
   let nameSubstring: string | undefined;
@@ -715,14 +723,37 @@ async function findNodes(params: RequestParams): Promise<unknown> {
   const key = getOptionalString(params?.key) ?? getOptionalString(queryFilters?.key);
   const parentId =
     getOptionalString(params?.parentId) ?? getOptionalString(queryFilters?.parentId);
-  if (nodeId) matches = matches.filter((node) => node.id === nodeId);
+
+  let matches: SceneNode[];
+  if (nodeId) {
+    // An exact id lookup never needs a page walk.
+    const node = await figma.getNodeByIdAsync(nodeId);
+    matches =
+      node && node.type !== "DOCUMENT" && node.type !== "PAGE" && isOnCurrentPage(node)
+        ? [node as SceneNode]
+        : [];
+  } else {
+    const nodes: SceneNode[] = [];
+    collectNodes(figma.currentPage, nodes);
+    matches = nodes;
+  }
   if (name) matches = matches.filter((node) => node.name === name);
   if (key) matches = matches.filter((node) => getPluginKey(node) === key);
   if (parentId) matches = matches.filter((node) => node.parent?.id === parentId);
   if (nameSubstring) {
     matches = matches.filter((node) => node.name.includes(nameSubstring));
   }
-  return { matches: matches.map((node) => toMutationResult(node)) };
+
+  const totalMatches = matches.length;
+  const truncated = totalMatches > MAX_FIND_NODES_RESULTS;
+  if (truncated) {
+    matches = matches.slice(0, MAX_FIND_NODES_RESULTS);
+  }
+  return {
+    matches: matches.map((node) => toMutationResult(node)),
+    totalMatches,
+    truncated,
+  };
 }
 
 /** Deletes a current-page node and reports its id. */
@@ -867,8 +898,15 @@ export async function handleWriteRequest(
       );
       results.push(result);
 
-      if (isObject(result) && typeof result.nodeId === "string" && operation.ref) {
-        context.refs.set(operation.ref, result.nodeId);
+      if (operation.ref) {
+        if (isObject(result) && typeof result.nodeId === "string") {
+          context.refs.set(operation.ref, result.nodeId);
+        } else {
+          fail(
+            "INVALID_INPUT",
+            `ref "${operation.ref}" cannot be captured: ${operation.type} does not return a single nodeId`
+          );
+        }
       }
     } catch (error) {
       return {

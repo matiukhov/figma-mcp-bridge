@@ -431,6 +431,79 @@ async function testBatchSetStrokesSupportsTmpRef() {
   assert.equal(modal.strokes[0].type, "SOLID");
 }
 
+/** Verifies find_nodes resolves an exact id without scanning and reports result metadata. */
+async function testFindNodesByIdFastPath() {
+  globalThis.figma = createMockFigma();
+
+  const frame = await handleWriteRequest("create_frame", undefined, { name: "Target" });
+  await handleWriteRequest("create_rectangle", undefined, { name: "Decoy" });
+
+  const result = await handleWriteRequest("find_nodes", undefined, {
+    nodeId: frame.nodeId,
+  });
+
+  assert.equal(result.matches.length, 1);
+  assert.equal(result.matches[0].name, "Target");
+  assert.equal(result.totalMatches, 1);
+  assert.equal(result.truncated, false);
+}
+
+/** Verifies a ref on an operation that returns no nodeId fails loudly instead of silently. */
+async function testBatchRefWithoutNodeIdFails() {
+  globalThis.figma = createMockFigma();
+
+  const result = await handleWriteRequest("batch_mutation", undefined, {
+    operations: [
+      { type: "create_frame", ref: "tmp:root", params: { name: "Root" } },
+      { type: "find_nodes", ref: "tmp:found", params: { name: "Root" } },
+    ],
+  });
+
+  assert.equal(result.failedStepIndex, 1);
+  assert.equal(result.failure.code, "INVALID_INPUT");
+  assert.match(result.failure.message, /does not return a single nodeId/);
+}
+
+/** Verifies short #RGB and 8-digit #RRGGBBAA hex colors are both accepted by paints. */
+async function testHexColorShortAndAlphaForms() {
+  globalThis.figma = createMockFigma();
+
+  const shortHex = await handleWriteRequest("create_rectangle", undefined, {
+    name: "Red",
+    fills: [{ type: "SOLID", color: "#F00" }],
+  });
+  const red = await globalThis.figma.getNodeByIdAsync(shortHex.nodeId);
+  assert.equal(red.fills[0].color.r, 1);
+  assert.equal(red.fills[0].color.g, 0);
+
+  const alphaHex = await handleWriteRequest("create_rectangle", undefined, {
+    name: "Faded",
+    fills: [{ type: "SOLID", color: "#FF000080" }],
+  });
+  const faded = await globalThis.figma.getNodeByIdAsync(alphaHex.nodeId);
+  assert.ok(Math.abs(faded.fills[0].opacity - 128 / 255) < 1e-9);
+}
+
+/** Verifies instance-child node ids pass batch validation instead of being rejected as malformed. */
+async function testInstanceChildNodeIdAccepted() {
+  globalThis.figma = createMockFigma();
+
+  const result = await handleWriteRequest("batch_mutation", undefined, {
+    operations: [
+      {
+        type: "set_position",
+        nodeId: "I12740:17806;12740:17793",
+        params: { x: 10, y: 20 },
+      },
+    ],
+  });
+
+  // The mock has no such node, but the id must survive format validation:
+  // the failure is NOT_FOUND, not the INVALID_INPUT colon-format rejection.
+  assert.equal(result.failedStepIndex, 0);
+  assert.equal(result.failure.code, "NOT_FOUND");
+}
+
 /** Runs the write-tool test cases and reports a simple pass/fail summary. */
 async function runTests() {
   const tests = [
@@ -441,6 +514,10 @@ async function runTests() {
     ["testFindNodesQuerySubstringFallback", testFindNodesQuerySubstringFallback],
     ["testBatchCreateFailureDoesNotLeakNodes", testBatchCreateFailureDoesNotLeakNodes],
     ["testBatchSetStrokesSupportsTmpRef", testBatchSetStrokesSupportsTmpRef],
+    ["testFindNodesByIdFastPath", testFindNodesByIdFastPath],
+    ["testBatchRefWithoutNodeIdFails", testBatchRefWithoutNodeIdFails],
+    ["testHexColorShortAndAlphaForms", testHexColorShortAndAlphaForms],
+    ["testInstanceChildNodeIdAccepted", testInstanceChildNodeIdAccepted],
   ];
   const failures = [];
   let passed = 0;

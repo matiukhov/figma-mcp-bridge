@@ -17,10 +17,7 @@ export const figmaNodeId = z
 const exportFormat = z.enum(["PNG", "SVG", "JPG", "PDF"]);
 const hexColor = z
   .string()
-  .regex(
-    /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/,
-    "Color must be a hex value like '#FA0', '#FFAA00', or '#FFAA00FF'"
-  );
+  .regex(/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, "Color must be a hex value like '#FFAA00'");
 const textAlignHorizontal = z.enum(["LEFT", "CENTER", "RIGHT", "JUSTIFIED"]);
 const textAlignVertical = z.enum(["TOP", "CENTER", "BOTTOM"]);
 const textAutoResize = z.enum(["NONE", "WIDTH_AND_HEIGHT", "HEIGHT", "TRUNCATE"]);
@@ -744,12 +741,21 @@ export const toolInputSchemas = {
   }),
   find_nodes: z.object({
     nodeId: figmaNodeId.optional(),
-    name: z.string().min(1).optional(),
+    name: z.string().min(1).optional().describe("Exact node name to match"),
     key: z.string().min(1).optional(),
     parentId: figmaNodeId.optional(),
+    query: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "Substring to match against node names, or a JSON object string with filters (nodeId, name, key, parentId)"
+      ),
+    fileKey: fileKeyField,
   }),
   batch_mutation: z.object({
     operations: z.array(batchOperation).min(1).max(100),
+    fileKey: fileKeyField,
   }),
 } as const;
 

@@ -545,11 +545,14 @@ export function registerTools(server: McpServer, node: Node, port: number): void
     );
   };
 
-  registerWriteTool("find_nodes", "Find nodes on the current page.", (args) =>
-    node.sendWithParams("find_nodes", undefined, args)
+  registerWriteTool("find_nodes", "Find nodes on the current page.", ({ fileKey, ...args }) =>
+    node.sendWithParams("find_nodes", undefined, args, fileKey)
   );
-  registerWriteTool("batch_mutation", "Execute write operations in order.", (args) =>
-    node.sendWithParams("batch_mutation", undefined, args)
+  registerWriteTool(
+    "batch_mutation",
+    "Execute write operations in order.",
+    ({ fileKey, ...args }) =>
+      node.sendWithParams("batch_mutation", undefined, args, fileKey)
   );
 }
 
@@ -593,6 +596,34 @@ export async function executeSaveScreenshots(
   };
 }
 
+/**
+ * Plugin write failures arrive as a JSON-encoded { code, message, details? }
+ * string; unwrap it into a readable message instead of surfacing the raw JSON.
+ */
+function formatBridgeError(error: string): string {
+  try {
+    const parsed: unknown = JSON.parse(error);
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      typeof (parsed as { message?: unknown }).message === "string"
+    ) {
+      const { code, message, details } = parsed as {
+        code?: unknown;
+        message: string;
+        details?: unknown;
+      };
+      const prefix = typeof code === "string" ? `${code}: ` : "";
+      const suffix =
+        details !== undefined ? ` (${JSON.stringify(details)})` : "";
+      return `${prefix}${message}${suffix}`;
+    }
+  } catch {
+    // Not JSON — already a plain message.
+  }
+  return error;
+}
+
 async function renderResponse(
   fn: () => Promise<BridgeResponse>
 ): Promise<ToolResult> {
@@ -600,7 +631,7 @@ async function renderResponse(
     const resp = await fn();
     if (resp.error) {
       return {
-        content: [{ type: "text", text: resp.error }],
+        content: [{ type: "text", text: formatBridgeError(resp.error) }],
         isError: true,
       };
     }
