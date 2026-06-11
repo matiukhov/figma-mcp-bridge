@@ -9,17 +9,33 @@ type RequestType =
   | "get_metadata"
   | "get_design_context"
   | "get_variable_defs"
-  | "get_screenshot";
+  | "get_screenshot"
+  | "set_node_visibility"
+  | "set_text_content"
+  | "set_text_properties"
+  | "set_node_properties"
+  | "set_solid_fill"
+  | "set_gradient_fill"
+  | "set_effects"
+  | "set_stroke_properties"
+  | "set_auto_layout"
+  | "create_frame"
+  | "create_text"
+  | "create_shape"
+  | "create_image"
+  | "duplicate_nodes"
+  | "reparent_nodes"
+  | "group_nodes"
+  | "ungroup_node"
+  | "set_selection"
+  | "scroll_and_zoom_into_view"
+  | "delete_nodes";
 
 type ServerRequest = {
   type: RequestType;
   requestId: string;
   nodeIds?: string[];
-  params?: {
-    format?: "PNG" | "SVG" | "JPG" | "PDF";
-    scale?: number;
-    depth?: number;
-  };
+  params?: Record<string, unknown>;
 };
 
 type PluginResponse = {
@@ -82,9 +98,18 @@ export default function App() {
   useEffect(() => {
     if (!status.fileKey) return;
 
+    let disposed = false;
+
     const connect = () => {
+      if (disposed) return;
+
       if (socketRef.current) {
-        socketRef.current.close();
+        const previousSocket = socketRef.current;
+        previousSocket.onopen = null;
+        previousSocket.onclose = null;
+        previousSocket.onerror = null;
+        previousSocket.onmessage = null;
+        previousSocket.close();
       }
 
       const wsUrl = `${WS_BASE_URL}?fileKey=${encodeURIComponent(status.fileKey)}&fileName=${encodeURIComponent(status.fileName)}`;
@@ -97,6 +122,7 @@ export default function App() {
       };
 
       ws.onclose = () => {
+        if (disposed || socketRef.current !== ws) return;
         setConnected(false);
         if (reconnectTimer.current === null) {
           reconnectTimer.current = window.setTimeout(() => {
@@ -107,10 +133,12 @@ export default function App() {
       };
 
       ws.onerror = () => {
+        if (disposed || socketRef.current !== ws) return;
         setConnected(false);
       };
 
       ws.onmessage = (event) => {
+        if (disposed || socketRef.current !== ws) return;
         const payload = JSON.parse(event.data) as ServerRequest;
         parent.postMessage({ pluginMessage: { type: "server-request", payload } }, "*");
       };
@@ -119,12 +147,18 @@ export default function App() {
     connect();
 
     return () => {
+      disposed = true;
       if (reconnectTimer.current !== null) {
         window.clearTimeout(reconnectTimer.current);
         reconnectTimer.current = null;
       }
       if (socketRef.current) {
-        socketRef.current.close();
+        const ws = socketRef.current;
+        ws.onopen = null;
+        ws.onclose = null;
+        ws.onerror = null;
+        ws.onmessage = null;
+        ws.close();
         socketRef.current = null;
       }
     };

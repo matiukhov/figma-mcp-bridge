@@ -47,7 +47,8 @@ export class Leader {
       server.on(
         "upgrade",
         (req: http.IncomingMessage, socket: Duplex, head: Buffer) => {
-          if (req.url?.startsWith("/ws")) {
+          const pathname = new URL(req.url ?? "", "http://localhost").pathname;
+          if (pathname === "/ws") {
             this.bridge.handleUpgrade(req, socket, head);
           } else {
             socket.destroy();
@@ -111,13 +112,20 @@ export class Leader {
               requestType: string,
               nodeIds?: string[],
               sendParams?: Record<string, unknown>
-            ) => this.bridge.sendWithParams(requestType, nodeIds, sendParams, fileKey),
+            ) =>
+              this.bridge.sendWithParams(
+                requestType,
+                nodeIds,
+                sendParams,
+                fileKey
+              ),
           };
           const result = await executeSaveScreenshots(
             sender,
             params.items as Parameters<typeof executeSaveScreenshots>[1],
             params.format as ExportFormat | undefined,
-            params.scale as number | undefined
+            params.scale as number | undefined,
+            params.clip as boolean | undefined
           );
           this.sendJSON(res, 200, { data: result });
           return;
