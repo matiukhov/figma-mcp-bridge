@@ -27,50 +27,6 @@ const textAutoResize = z.enum(["NONE", "WIDTH_AND_HEIGHT", "HEIGHT", "TRUNCATE"]
 const shapeType = z.enum(["RECTANGLE", "ELLIPSE", "LINE"]);
 const imageScaleMode = z.enum(["FILL", "FIT"]);
 
-const solidPaint = z.object({
-  type: z.literal("SOLID"),
-  color: hexColor,
-  opacity: z.number().min(0).max(1).optional(),
-});
-
-const createNodeBase = z.object({
-  parentId: figmaNodeId.optional(),
-  name: z.string().min(1).optional(),
-  x: z.number().optional(),
-  y: z.number().optional(),
-  width: z.number().positive().optional(),
-  height: z.number().positive().optional(),
-  key: z.string().min(1).optional(),
-});
-
-const textStyleSchema = z.object({
-  fontFamily: z.string().min(1).optional(),
-  fontStyle: z.string().min(1).optional(),
-  fontSize: z.number().positive().optional(),
-  textDecoration: z
-    .enum(["NONE", "UNDERLINE", "STRIKETHROUGH"])
-    .optional(),
-  textAlignHorizontal: z
-    .enum(["LEFT", "CENTER", "RIGHT", "JUSTIFIED"])
-    .optional(),
-  textAlignVertical: z.enum(["TOP", "CENTER", "BOTTOM"]).optional(),
-  textAutoResize: z
-    .enum(["NONE", "WIDTH_AND_HEIGHT", "HEIGHT", "TRUNCATE"])
-    .optional(),
-  lineHeight: z
-    .object({
-      unit: z.enum(["PIXELS", "PERCENT"]).optional(),
-      value: z.number().nonnegative().optional(),
-    })
-    .optional(),
-  letterSpacing: z
-    .object({
-      unit: z.enum(["PIXELS", "PERCENT"]).optional(),
-      value: z.number().optional(),
-    })
-    .optional(),
-});
-
 export const batchOperationType = z.enum([
   "create_frame",
   "create_text",
@@ -786,64 +742,11 @@ export const toolInputSchemas = {
       ),
     fileKey: fileKeyField,
   }),
-  create_rectangle: createNodeBase.extend({
-    fills: z.array(solidPaint).optional(),
-    strokes: z.array(solidPaint).optional(),
-    cornerRadius: z.number().nonnegative().optional(),
-  }),
-  append_children: z.object({
-    parentId: figmaNodeId,
-    childIds: z.array(figmaNodeId).min(1),
-  }),
-  set_position: z.object({
-    nodeId: figmaNodeId,
-    x: z.number(),
-    y: z.number(),
-  }),
-  set_size: z.object({
-    nodeId: figmaNodeId,
-    width: z.number().positive(),
-    height: z.number().positive(),
-  }),
-  set_fills: z.object({
-    nodeId: figmaNodeId,
-    fills: z.array(solidPaint),
-  }),
-  set_strokes: z.object({
-    nodeId: figmaNodeId,
-    strokes: z.array(solidPaint),
-  }),
-  set_corner_radius: z.object({
-    nodeId: figmaNodeId,
-    cornerRadius: z.number().nonnegative(),
-  }),
-  set_text_style: z.object({
-    nodeId: figmaNodeId,
-    style: textStyleSchema,
-  }),
-  set_layout_mode: z.object({
-    nodeId: figmaNodeId,
-    layoutMode: z.enum(["NONE", "HORIZONTAL", "VERTICAL"]),
-  }),
-  set_padding: z.object({
-    nodeId: figmaNodeId,
-    top: z.number().nonnegative().optional(),
-    right: z.number().nonnegative().optional(),
-    bottom: z.number().nonnegative().optional(),
-    left: z.number().nonnegative().optional(),
-  }),
-  set_item_spacing: z.object({
-    nodeId: figmaNodeId,
-    itemSpacing: z.number(),
-  }),
   find_nodes: z.object({
     nodeId: figmaNodeId.optional(),
     name: z.string().min(1).optional(),
     key: z.string().min(1).optional(),
     parentId: figmaNodeId.optional(),
-  }),
-  delete_node: z.object({
-    nodeId: figmaNodeId,
   }),
   batch_mutation: z.object({
     operations: z.array(batchOperation).min(1).max(100),
@@ -890,19 +793,7 @@ const rpcToArgs: Record<
   scroll_and_zoom_into_view: (nodeIds, params) => ({ nodeIds, ...params }),
   delete_nodes: (nodeIds, params) => ({ nodeIds, ...params }),
   save_screenshots: (_nodeIds, params) => ({ ...params }),
-  create_rectangle: (_nodeIds, params) => ({ ...params }),
-  append_children: (_nodeIds, params) => ({ ...params }),
-  set_position: (nodeIds, params) => ({ nodeId: nodeIds?.[0], ...params }),
-  set_size: (nodeIds, params) => ({ nodeId: nodeIds?.[0], ...params }),
-  set_fills: (nodeIds, params) => ({ nodeId: nodeIds?.[0], ...params }),
-  set_strokes: (nodeIds, params) => ({ nodeId: nodeIds?.[0], ...params }),
-  set_corner_radius: (nodeIds, params) => ({ nodeId: nodeIds?.[0], ...params }),
-  set_text_style: (nodeIds, params) => ({ nodeId: nodeIds?.[0], ...params }),
-  set_layout_mode: (nodeIds, params) => ({ nodeId: nodeIds?.[0], ...params }),
-  set_padding: (nodeIds, params) => ({ nodeId: nodeIds?.[0], ...params }),
-  set_item_spacing: (nodeIds, params) => ({ nodeId: nodeIds?.[0], ...params }),
   find_nodes: (_nodeIds, params) => ({ ...params }),
-  delete_node: (nodeIds, params) => ({ nodeId: nodeIds?.[0], ...params }),
   batch_mutation: (_nodeIds, params) => ({ ...params }),
 };
 

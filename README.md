@@ -95,22 +95,10 @@ If you want to know more about how it works, read the [How it works](#how-it-wor
 | `set_selection` | Set the page selection to a list of node IDs (works in Dev Mode) |
 | `scroll_and_zoom_into_view` | Frame the viewport around the given nodes (works in Dev Mode) |
 | `delete_nodes` | Delete nodes with explicit confirmation |
-| `create_rectangle` | Create a rectangle on the current page |
-| `append_children` | Re-parent existing child nodes under a parent |
 | `find_nodes` | Find nodes on the current page by ID, name, key, or parent |
-| `set_position` | Set node position |
-| `set_size` | Set node size |
-| `set_fills` | Set node fills using supported solid paints |
-| `set_strokes` | Set node strokes using supported solid paints |
-| `set_corner_radius` | Set uniform corner radius |
-| `set_text_style` | Set text style |
-| `set_layout_mode` | Set auto-layout mode |
-| `set_padding` | Set auto-layout padding |
-| `set_item_spacing` | Set auto-layout item spacing |
-| `delete_node` | Delete a single node (no confirmation; see also `delete_nodes`) |
 | `batch_mutation` | Execute up to 100 write operations in order, with temporary refs for multi-step generation |
 
-Batch write operations (`batch_mutation`) are intentionally scoped to the current page and a deterministic subset of Figma mutations so AI-driven edits remain easier to validate and safer to automate.
+Batch write operations (`batch_mutation`) are intentionally scoped to the current page and a deterministic subset of Figma mutations so AI-driven edits remain easier to validate and safer to automate. Supported operation types: `create_frame`, `create_text`, `create_rectangle`, `append_children`, `set_position`, `set_size`, `set_fills`, `set_strokes`, `set_corner_radius`, `set_text_content`, `set_text_style`, `set_layout_mode`, `set_padding`, `set_item_spacing`, `find_nodes`, and `delete_node`.
 
 Within `batch_mutation`, temporary references must use the `tmp:` prefix, for example `ref: "tmp:modal"` and `nodeId: "tmp:modal"`. Bare labels like `"modal"` are treated as literal node IDs and are not resolved as batch refs.
 

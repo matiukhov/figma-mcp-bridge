@@ -10,19 +10,7 @@ type RequestType =
   | "get_design_context"
   | "get_variable_defs"
   | "get_screenshot"
-  | "create_rectangle"
-  | "append_children"
-  | "set_position"
-  | "set_size"
-  | "set_fills"
-  | "set_strokes"
-  | "set_corner_radius"
-  | "set_text_style"
-  | "set_layout_mode"
-  | "set_padding"
-  | "set_item_spacing"
   | "find_nodes"
-  | "delete_node"
   | "batch_mutation"
   | "set_node_visibility"
   | "set_text_content"
@@ -374,18 +362,6 @@ const EDIT_REQUEST_TYPES = new Set<RequestType>([
   "group_nodes",
   "ungroup_node",
   "delete_nodes",
-  "create_rectangle",
-  "append_children",
-  "set_position",
-  "set_size",
-  "set_fills",
-  "set_strokes",
-  "set_corner_radius",
-  "set_text_style",
-  "set_layout_mode",
-  "set_padding",
-  "set_item_spacing",
-  "delete_node",
   "batch_mutation",
 ]);
 
@@ -679,19 +655,7 @@ const handleRequest = async (
           },
         };
       }
-      case "create_rectangle":
-      case "append_children":
-      case "set_position":
-      case "set_size":
-      case "set_fills":
-      case "set_strokes":
-      case "set_corner_radius":
-      case "set_text_style":
-      case "set_layout_mode":
-      case "set_padding":
-      case "set_item_spacing":
       case "find_nodes":
-      case "delete_node":
       case "batch_mutation":
         return {
           type: request.type,

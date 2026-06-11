@@ -80,20 +80,7 @@ interface SaveScreenshotItemResult {
 
 type WriteToolName = keyof Pick<
   typeof toolInputSchemas,
-  | "create_rectangle"
-  | "append_children"
-  | "find_nodes"
-  | "batch_mutation"
-  | "set_position"
-  | "set_size"
-  | "set_fills"
-  | "set_strokes"
-  | "set_corner_radius"
-  | "set_text_style"
-  | "set_layout_mode"
-  | "set_padding"
-  | "set_item_spacing"
-  | "delete_node"
+  "find_nodes" | "batch_mutation"
 >;
 
 /** Registers all read and write MCP tools exposed by the bridge server. */
@@ -558,57 +545,11 @@ export function registerTools(server: McpServer, node: Node, port: number): void
     );
   };
 
-  registerWriteTool("create_rectangle", "Create a rectangle.", (args) =>
-    node.sendWithParams("create_rectangle", undefined, args)
-  );
-  registerWriteTool("append_children", "Append existing child nodes to a parent.", (args) =>
-    node.sendWithParams("append_children", undefined, args)
-  );
   registerWriteTool("find_nodes", "Find nodes on the current page.", (args) =>
     node.sendWithParams("find_nodes", undefined, args)
   );
   registerWriteTool("batch_mutation", "Execute write operations in order.", (args) =>
     node.sendWithParams("batch_mutation", undefined, args)
-  );
-
-  registerWriteTool("set_position", "Set node position.", ({ nodeId, ...args }) =>
-    node.sendWithParams("set_position", [String(nodeId)], args)
-  );
-  registerWriteTool("set_size", "Set node size.", ({ nodeId, ...args }) =>
-    node.sendWithParams("set_size", [String(nodeId)], args)
-  );
-  registerWriteTool("set_fills", "Set node fills.", ({ nodeId, ...args }) =>
-    node.sendWithParams("set_fills", [String(nodeId)], args)
-  );
-  registerWriteTool("set_strokes", "Set node strokes.", ({ nodeId, ...args }) =>
-    node.sendWithParams("set_strokes", [String(nodeId)], args)
-  );
-  registerWriteTool(
-    "set_corner_radius",
-    "Set uniform corner radius.",
-    ({ nodeId, ...args }) =>
-      node.sendWithParams("set_corner_radius", [String(nodeId)], args)
-  );
-  registerWriteTool("set_text_style", "Set text style.", ({ nodeId, ...args }) =>
-    node.sendWithParams("set_text_style", [String(nodeId)], args)
-  );
-  registerWriteTool(
-    "set_layout_mode",
-    "Set auto-layout mode.",
-    ({ nodeId, ...args }) =>
-      node.sendWithParams("set_layout_mode", [String(nodeId)], args)
-  );
-  registerWriteTool("set_padding", "Set auto-layout padding.", ({ nodeId, ...args }) =>
-    node.sendWithParams("set_padding", [String(nodeId)], args)
-  );
-  registerWriteTool(
-    "set_item_spacing",
-    "Set auto-layout item spacing.",
-    ({ nodeId, ...args }) =>
-      node.sendWithParams("set_item_spacing", [String(nodeId)], args)
-  );
-  registerWriteTool("delete_node", "Delete a node.", ({ nodeId }) =>
-    node.sendWithParams("delete_node", [String(nodeId)])
   );
 }
 
