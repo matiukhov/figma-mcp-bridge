@@ -479,16 +479,16 @@ function applyLayoutMode(node: SceneNode, layoutMode: unknown): void {
   node.layoutMode = getString(layoutMode, "layoutMode") as FrameNode["layoutMode"];
 }
 
-/** Applies auto-layout padding values, defaulting omitted edges to zero. */
+/** Applies auto-layout padding values; only assigns edges that are provided as numbers. */
 function applyPadding(node: SceneNode, padding: unknown): void {
   if (padding === undefined) return;
   if (!("paddingTop" in node) || !isObject(padding)) {
     fail("UNSUPPORTED_NODE", "padding is not supported for this node");
   }
-  node.paddingTop = typeof padding.top === "number" ? padding.top : 0;
-  node.paddingRight = typeof padding.right === "number" ? padding.right : 0;
-  node.paddingBottom = typeof padding.bottom === "number" ? padding.bottom : 0;
-  node.paddingLeft = typeof padding.left === "number" ? padding.left : 0;
+  if (typeof padding.top === "number") node.paddingTop = padding.top;
+  if (typeof padding.right === "number") node.paddingRight = padding.right;
+  if (typeof padding.bottom === "number") node.paddingBottom = padding.bottom;
+  if (typeof padding.left === "number") node.paddingLeft = padding.left;
 }
 
 /** Applies auto-layout item spacing to supported container nodes. */
@@ -817,7 +817,9 @@ async function executeWrite(type: string, nodeIds: string[] | undefined, params:
     case "set_layout_mode":
       return mutateNode(merged, (node) => applyLayoutMode(node, merged.layoutMode));
     case "set_padding":
-      return mutateNode(merged, (node) => applyPadding(node, merged.padding ?? merged));
+      return mutateNode(merged, (node) =>
+        applyPadding(node, { top: merged.top, right: merged.right, bottom: merged.bottom, left: merged.left })
+      );
     case "set_item_spacing":
       return mutateNode(merged, (node) => applyItemSpacing(node, merged.itemSpacing));
     case "find_nodes":

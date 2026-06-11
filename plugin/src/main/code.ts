@@ -1,4 +1,4 @@
-import { serializeNode } from "./serializer";
+import { serializeNode, serializePage } from "./serializer";
 import { handleWriteRequest, serializeWriteError } from "./write";
 
 type RequestType =
@@ -388,7 +388,7 @@ const handleRequest = async (
         return {
           type: request.type,
           requestId: request.requestId,
-          data: serializeNode(figma.currentPage as unknown as SceneNode),
+          data: serializePage(figma.currentPage),
         };
       case "get_selection":
         return {

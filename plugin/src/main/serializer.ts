@@ -366,6 +366,15 @@ const serializeStyles = (node: SceneNode): SerializedStyles => {
   return styles;
 };
 
+export const serializePage = (page: PageNode): SerializedNode => ({
+  id: page.id,
+  name: page.name,
+  type: page.type,
+  children: page.children
+    .filter((child) => child.visible !== false)
+    .map((child) => serializeNode(child)),
+});
+
 export const serializeNode = (node: SceneNode): SerializedNode => {
   const base: SerializedNode = {
     id: node.id,
